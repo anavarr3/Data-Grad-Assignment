@@ -1,0 +1,30 @@
+---
+title: "Grad Assignment"
+output: html_document
+date: "2023-11-19"
+author: Adriana Navarro
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(janitor)
+```
+```{r}
+read_csv("data/compliance.csv") |> 
+  clean_names() |> 
+#  filter(!is.na(document))
+#^ Here I checked to see if I should keep the document column in. It seems like these links are invalid, so I'm going to select them out for now.
+  select(-document, -inspection_reason) 
+ # group_by(inspection_reason) |> 
+ # summarise(count=n())
+ #^ Here I wanted to see if there was any reason to keep the "inspection_reason" column. Unfortunately, it's all NA, so I took it out.
+
+#Next step: split city, state, zip and see if there are any outside of MD.
+  
+```
+
