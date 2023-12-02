@@ -3,28 +3,220 @@ title: "Grad Assignment"
 output: html_document
 date: "2023-11-19"
 author: Adriana Navarro
+dataset: Maryland Department of the Environment - Water and Science Administration (WSA) Compliance
+link: https://opendata.maryland.gov/Energy-and-Environment/Maryland-Department-of-the-Environment-Water-and-S/hxmu-urvx
+project details: https://docs.google.com/document/d/1rvEymxmdoU72bAFqYEfobgc9is7ko2aZNxu5QZj-WKU/edit#heading=h.m8hwzhwk8ccv
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+1. Who created and maintains the data? What state program or law is it connected to?
+**Answer** Maryland Department of the Environment (MDE); owner: Sharmila; This data set is connected to MDE's Annual Enforcement and Compliance Report, required by the Environment Article §1-301(d), Annotated Code of Maryland.
+
+2. What does each row represent?
+
+**Answer** Each row represents a Water and Science Administration (WSA) Inspection
+
+3. What is the chronological and geographic scope of this data? 
+
+**Answer** The data set was created in 2021 but was last updated Nov. 25, 2023. As for the geographic scope, I group_by and summarised the county column and found it covers all the counties, Baltimore City County and three other categories: "Not Yet Determined", "Outside of Maryland", and "Statewide".
+
+4. If this data contains aggregates (totals), can you find itemized data that those totals are derived from? Do the totals match your own calculations using the itemized data?
+
+**Answer** The WSA data on its own does not contain aggregates.
+
+**Questions for data owner**
+1. Why is the inspection_reason column blank? Can I have the data?
+2. Why are there reports from other states?
+3. What is the 00000 zip code -- is this just blank? What is the "206 7", "20619619" and "33333-3333"? (Cleaned -- could not match 33333 with a zip code in Baltimore)
+
+#Story Ideas
+1. The MTA-Purple Line. It has the highest number of reports. This could possibly be because it stretches from Bethesda to North Carrollton, so there's a lot of ground to cover in reports. However, the majority of those reports are in noncompliance. What does this entail? Is this simply because of construction going on or do they account for that aspect in the report? How is this impacting flash flooding? 
+
+2. The crossover into other states.
+
+3. 
+
+
 ```{r}
 library(tidyverse)
 library(dplyr)
 library(janitor)
+library(stringr)
+library(ggplot2)
+library(ggthemes)
+```
+
+
+```{r}
+#Here I am cleaning the data. I read it in, cleaned the names, separated the location column into three separate ones that list the city, state and zip code of the complaint, and did a lot of work on the new zip column. I then took away the document and inspection_reason columns because they were empty, but I've been trying to get ahold of the creators of the spreadsheet to see if I can get the data. I'm very interested in the inspection_reason column and was disappointed to see it was completely useless here. The document links are invalid, making that column more or less useless as well.
+
+# I commented out the two lines of code that I used to see if there was any reason to keep the "inspection_reason" column. Unfortunately, it's all NA, so I took it out. I am trying to get a hold of the data.
+
+compliance <- read_csv("data/compliance_dec.csv") |> 
+  clean_names() |> 
+  separate(city_state_zip, into = c("city", "state", "zip"), sep = ",") |>
+ #group_by(inspection_reason) |> 
+ #summarise(count=n()) 
+  mutate(inspection_date = mdy(inspection_date),
+         zip = str_replace_all(zip, c("-.*$" = "", "20619619" = "20619", "206 4" = "20674")),
+         zip = str_trim(zip), 
+         zip = coalesce(na_if(zip, ""), na_if(zip, "00000")),
+         year = year(inspection_date),
+         month = month(inspection_date, label = TRUE),
+         day = day(inspection_date)) |> 
+  select(-document, -inspection_reason)
+
+compliance
+    ```
+
+```{r}
+#Here I'm checking if these are just Maryland reports and what the zip codes look like. I used this to better clean the compliance dataframe. Cleaning checklist: change the 00000 zip codes to NA, change the zip code "20619619" to "20619" (I double checked this and it is California, Maryland), change zip code "206 4" to "20674" after grabbing the address from that entry and looking it up.
+
+#Data smells: zip codes: "", "00000", "206 7", "20619619" "33333-3333", Why are they in Illinois?? They are in DC, GA, IL, MD, VA, WV, YY (typo?), and no state available.
+
+#Question: Which zip code has the highest number of compliance reports?
+
+zip_count <- compliance |> 
+  group_by(zip) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+zip_count
+
+state_zip <- compliance |> 
+  filter(county == "Outside of Maryland") |> 
+  group_by(zip, county, state,)
+
+state_zip
+
 ```
 ```{r}
-read_csv("data/compliance.csv") |> 
-  clean_names() |> 
-#  filter(!is.na(document))
-#^ Here I checked to see if I should keep the document column in. It seems like these links are invalid, so I'm going to select them out for now.
-  select(-document, -inspection_reason) 
- # group_by(inspection_reason) |> 
- # summarise(count=n())
- #^ Here I wanted to see if there was any reason to keep the "inspection_reason" column. Unfortunately, it's all NA, so I took it out.
+# Here I wanted to group the counties to get a count of how many there were/the geographical scope of the data. There ended up being a few extra entries that weren't Maryland counties
 
-#Next step: split city, state, zip and see if there are any outside of MD.
-  
+# Question: What county has the highest count of compliance forms? Does this match with the zip code above? St. Mary's has the highest count of compliance forms, but the zip code with the highest count is in Talbot County.
+compliance_counties <- compliance |> 
+  group_by(county) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+compliance_counties
 ```
+
+```{r}
+compliance_actions <- compliance |> 
+  group_by(recommended_actions) |> 
+  summarise(count =n()) |> 
+  arrange(desc(count))
+
+compliance_actions
+```
+
+```{r}
+compliance_status <- compliance |> 
+  group_by(site_status) |> 
+  summarise(count =n()) |> 
+  arrange(desc(count))
+
+compliance_status
+```
+
+```{r}
+#Wowowowowow the Purple Line has over 500 counts, making it the site with the highest count of reports
+names <- compliance |> 
+#  filter(site_name == "MTA-Purple Line") |> 
+  group_by(site_name) |> 
+  summarise(count =n()) |> 
+  arrange(desc(count))
+
+names
+```
+
+```{r}
+# Does the MTA-Purple Line have the highest count of noncompliance as well? Yep
+noncompliance <- compliance |> 
+  filter(site_status == "Noncompliance") |> 
+  group_by(site_name) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+noncompliance
+```
+
+```{r}
+purple_line <- compliance |> 
+  filter(site_name == "MTA-Purple Line", site_status == "Noncompliance")
+purple_line
+```
+
+```{r}
+
+purple_line_types <- compliance |> 
+  filter(site_name == "MTA-Purple Line", site_status == "Noncompliance") |> 
+  group_by(inspection_type) |> 
+  summarise(count =n()) |> 
+  mutate(percent = count/(sum(count))*100) |> 
+  arrange(desc(count))
+
+purple_line_types
+
+#write_csv(purple_line_types, "data/purple_line_types")
+#Exporting this for a datawrapper map
+```
+
+```{r}
+#I'm more comfortable with using datawrapper, but I wanted to try to make this a bar chart in ggplot. Here's the datawrapper chart:
+
+#And here's the ggplot chart: 
+
+purple_line_types |> 
+  ggplot() +
+  geom_bar(aes(x =reorder(inspection_type, percent), weight = percent), fill = "lightblue", color = "lightblue") +
+  coord_flip() + 
+  theme_economist() +
+labs(
+  title="Majority of Purple Line's noncompliance results were storm water management",
+    x = "noncompliance types",
+    y = "percent",
+    caption = "source: Maryland Department of the Environment"
+) +
+  theme(
+    plot.title = element_text(size = 12, margin = margin(b = 15), hjust = 1.3), 
+    axis.title.y = element_text(margin = margin(r = 10)),  
+    axis.title.x = element_text(margin = margin(t = 10)),  
+    plot.margin = margin(t = 30, r = 10, b = 10, l = 10)  
+  )
+
+```
+
+
+```{r}
+noncompliance_per_year <- compliance |> 
+  filter(site_status == "Noncompliance") |> 
+  group_by(year) |> 
+  summarise(count = n()) |> 
+  arrange(year)
+  
+  noncompliance_per_year
+```
+
+```{r} 
+#Was there a year with more noncompliance issues than others? Yes, 2023. Construction began Aug. 2017, paused Sept. 2022 and restarted summer of 2022
+purple_line_time <- purple_line |> 
+  group_by(year) |> 
+  summarise(count = n()) |> 
+  arrange(year)
+  
+purple_line_time
+```
+
+#Okay, time to start exploring another data set. I want to see if I can
+
+
+
+
+
+
 
