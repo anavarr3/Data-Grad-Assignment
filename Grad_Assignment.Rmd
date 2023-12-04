@@ -63,10 +63,10 @@ compliance <- read_csv("data/compliance_dec.csv") |>
   mutate(inspection_date = mdy(inspection_date),
          zip = str_replace_all(zip, c("-.*$" = "", "20619619" = "20619", "206 4" = "20674")),
          zip = str_trim(zip), 
-         zip = coalesce(na_if(zip, ""), na_if(zip, "00000")),
          year = year(inspection_date),
          month = month(inspection_date, label = TRUE),
-         day = day(inspection_date)) |> 
+         day = day(inspection_date),
+         zip = case_when(zip == "" | zip == "00000" | zip == "33333" ~ NA, .default = zip)) |> 
   select(-document, -inspection_reason)
 
 compliance
@@ -77,7 +77,7 @@ compliance
 
 #Data smells: zip codes: "", "00000", "206 7", "20619619" "33333-3333", Why are they in Illinois?? They are in DC, GA, IL, MD, VA, WV, YY (typo?), and no state available.
 
-#Question: Which zip code has the highest number of compliance reports?
+#Question: Which zip code has the highest number of reports?
 
 zip_count <- compliance |> 
   group_by(zip) |> 
@@ -106,6 +106,7 @@ compliance_counties
 ```
 
 ```{r}
+
 compliance_actions <- compliance |> 
   group_by(recommended_actions) |> 
   summarise(count =n()) |> 
@@ -115,16 +116,55 @@ compliance_actions
 ```
 
 ```{r}
-compliance_status <- compliance |> 
-  group_by(site_status) |> 
+compliance_site_condition <- compliance |> 
+  group_by(site_condition) |> 
   summarise(count =n()) |> 
   arrange(desc(count))
 
-compliance_status
+compliance_site_condition
+```
+
+
+```{r}
+#What are the action required reports? A residence Hall at Bowie State University has the most. Would probably need to FOIA the records or just ask since they seemed pretty willing to help out when I called.
+
+action_required <- compliance |> 
+  filter(site_condition == "Corrective Actions Required") |> 
+  group_by(site_name) |> 
+ summarise(count = n()) |> 
+ arrange(desc(count))
+
+
+action_required
 ```
 
 ```{r}
-#Wowowowowow the Purple Line has over 500 counts, making it the site with the highest count of reports
+#A recycling company (World Recycling Company, 11 counts of significant noncompliance) received the most "Significant Noncompliance" counts. Now let's see how they pan out combined with Noncompliance. The recycling company is still pretty far down when combined.
+
+sig_non <- compliance |> 
+  filter(site_status == "Significant Noncompliance") |> 
+  group_by(site_name) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+sig_non
+
+
+
+sig_norm_noncom <- compliance |> 
+  filter(site_status == "Significant Noncompliance"  | site_status == "Noncompliance") |> 
+  group_by(site_name) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+
+sig_norm_noncom
+```
+
+
+
+```{r}
+#Wowowowowow the Purple Line has over 500 total reports, making it the site with the highest count of reports. This makes sense seeing how it's a large project that spans across different zip codes.
 names <- compliance |> 
 #  filter(site_name == "MTA-Purple Line") |> 
   group_by(site_name) |> 
@@ -135,26 +175,37 @@ names
 ```
 
 ```{r}
-# Does the MTA-Purple Line have the highest count of noncompliance as well? Yep
-noncompliance <- compliance |> 
+# Does the MTA-Purple Line have the highest count of noncompliance as well? Yep. Note: It had over 260 counts when I used the site_status column instead. I'm using the site_condition column for now since it seems like originally this is the correct column. The "site_status" column should say whether the case is "active" or "closed."
+
+noncompliance_condition <- compliance |> 
+  filter(site_condition == "Noncompliance") |> 
+  group_by(site_name) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+noncompliance_condition
+
+
+noncompliance_status <- compliance |> 
   filter(site_status == "Noncompliance") |> 
   group_by(site_name) |> 
   summarise(count = n()) |> 
   arrange(desc(count))
 
-noncompliance
+noncompliance_status
 ```
 
 ```{r}
+#I just wanted to make this dataframe for future coding
 purple_line <- compliance |> 
-  filter(site_name == "MTA-Purple Line", site_status == "Noncompliance")
+  filter(site_name == "MTA-Purple Line")
 purple_line
 ```
 
 ```{r}
-
-purple_line_types <- compliance |> 
-  filter(site_name == "MTA-Purple Line", site_status == "Noncompliance") |> 
+#
+purple_line_types <- purple_line |> 
+  filter(site_status == "Noncompliance") |> 
   group_by(inspection_type) |> 
   summarise(count =n()) |> 
   mutate(percent = count/(sum(count))*100) |> 
@@ -162,8 +213,8 @@ purple_line_types <- compliance |>
 
 purple_line_types
 
-#write_csv(purple_line_types, "data/purple_line_types")
-#Exporting this for a datawrapper map
+write_csv(purple_line_types, "data/purple_line_types.csv")
+#Exporting this for a datawrapper map. See below. 
 ```
 
 ```{r}
@@ -193,6 +244,7 @@ labs(
 
 
 ```{r}
+#Construction on the Purple Line actually paused around the pandemic and restarted during the summer of 2022. What was going on during that period of limbo? Why were there still compliance reports/was it not taken care of during that time? How did this impact the surrounding area/environment? This can be especially concerning since storm water management is the top inspection type for this site. Did this impact flash flood risk?
 noncompliance_per_year <- compliance |> 
   filter(site_status == "Noncompliance") |> 
   group_by(year) |> 
@@ -203,7 +255,7 @@ noncompliance_per_year <- compliance |>
 ```
 
 ```{r} 
-#Was there a year with more noncompliance issues than others? Yes, 2023. Construction began Aug. 2017, paused Sept. 2022 and restarted summer of 2022
+#Was there a year with more noncompliance issues than others? Yes, 2023. Construction began Aug. 2017, paused Sept. 2020 and restarted summer of 2022
 purple_line_time <- purple_line |> 
   group_by(year) |> 
   summarise(count = n()) |> 
@@ -212,10 +264,236 @@ purple_line_time <- purple_line |>
 purple_line_time
 ```
 
-#Okay, time to start exploring another data set. I want to see if I can
+#Okay, time to start exploring another data set. I want to see if I can merge this with the census. I want to see the population in each county. Maybe I can break it up by race/ethnicity for a good comparison. 
+
+```{r}
+mdzip <- get_acs(geography="zcta", variables = "B01003_001", year=2021) |> 
+  clean_names() |> 
+  rename(zip = geoid, total_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+mdzip
+
+md_white <- get_acs(geography="zcta", variables = "B02001_002", year=2021) |> 
+  clean_names() |> 
+  rename(zip = geoid, white_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+md_black <- get_acs(geography="zcta", variables = "B02001_003", year=2021) |> 
+  clean_names() |> 
+  rename(zip = geoid, black_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+md_indigenous <- get_acs(geography="zcta", variables = "B02001_004", year=2021)|> 
+  clean_names() |> 
+  rename(zip = geoid, indigenous_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+md_asian <- get_acs(geography="zcta", variables = "B02001_005", year=2021)|> 
+  clean_names() |> 
+  rename(zip = geoid, asian_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+md_hawaii_pi <- get_acs(geography="zcta", variables = "B02001_006", year=2021)|> 
+  clean_names() |> 
+  rename(zip = geoid, hawaii_pi_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+md_other <- get_acs(geography="zcta", variables = "B02001_007", year=2021)|>
+  clean_names() |> 
+  rename(zip = geoid, other_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+md_two_more <- get_acs(geography="zcta", variables = "B02001_008", year=2021)|> 
+  clean_names() |> 
+  rename(zip = geoid, two_more_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+md_hispanic <- get_acs(geography="zcta", variables = "B03001_003", year=2021)|> 
+  clean_names() |> 
+  rename(zip = geoid, hispanic_pop = estimate) |>
+  select(-name, -variable, -moe)
+
+```
+
+# Joining
+
+```{r}
+#Let's start with the census data. The number of people by race/ethnicity were a little meaningless just by looking at them, so I made columns that showed their percentage of the population instead. Since "Hispanic" is not a race, it shouldn't be counted as its own. There will be overlap.
+
+census_data <- mdzip |> 
+  left_join(md_white, by = "zip") |> 
+  left_join(md_black, by = "zip") |> 
+  left_join(md_indigenous, by = "zip") |>
+  left_join(md_asian, by = "zip") |> 
+  left_join(md_hawaii_pi, by = "zip") |> 
+  left_join(md_other, by = "zip") |> 
+  left_join(md_two_more, by = "zip") |>
+  left_join(md_hispanic, by = "zip") |> 
+  mutate(perc_white = (white_pop/total_pop)*100) |> 
+  mutate(perc_black = (black_pop/total_pop)*100) |>
+  mutate(perc_indigenous = (indigenous_pop/total_pop)*100) |> 
+  mutate(perc_asian = (asian_pop/total_pop)*100) |>  
+  mutate(perc_hawaii_pi = (hawaii_pi_pop/total_pop)*100) |> 
+  mutate(perc_other = (other_pop/total_pop)*100) |>   
+  mutate(perc_two_more = (two_more_pop/total_pop)*100) |> 
+  mutate(perc_hispanic = (hispanic_pop/total_pop)*100) |> 
+  select(-white_pop, -black_pop, -indigenous_pop, -asian_pop, -hawaii_pi_pop, -other_pop, -two_more_pop, -hispanic_pop)
+
+ census_data 
+```
+
+#I want to focus on noncompliance records for this. Possibly more focused on issues that were fixed/ones that haven't been resolved.
+
+```{r}
+#Let's look at just Maryland stuff right now. I'm clumping "Significant Noncompliance" together with "Noncompliance" since they're in the same vein.
+
+md_reports_noncompliant <- compliance |> 
+  filter(state == "MD", site_condition == "Significant Noncompliance"  | site_condition == "Noncompliance") |>  
+  group_by(zip) |> 
+  summarise(number_of_noncompliant = n()) |> 
+  arrange(desc(number_of_noncompliant))
+
+md_reports_noncompliant
+```
+
+```{r}
+md_noncompliant_zip <- md_reports_noncompliant |> 
+  left_join(census_data, by = "zip")
+
+md_noncompliant_zip
+```
+
+```{r}
+# Attempt at income
+
+mdzip_income <- get_acs(geography="zcta", variables = "B19013_001", year=2021) |> 
+  clean_names() |> 
+  rename(zip = geoid, median_income = estimate) |>
+  select(-name, -variable, -moe)
+
+mdzip_income
+```
+```{r}
+md_income_noncompliance <- md_reports_noncompliant |> 
+  left_join(mdzip_income, by = "zip")
+
+md_income_noncompliance
+
+```
+
+```{r}
+ggplot(md_income_noncompliance, aes(x=median_income, y=number_of_noncompliant)) +
+  geom_point()+
+  labs(
+    title="Majority WSA noncompliant sites were in zip codes below state's median income",
+    subtitle= "Zip codes that earned below the state's median income of $108k had more noncompliant sites.",
+    x = "median household income",
+    y = "number of noncompliant results",
+    caption = "source: Maryland Department of the Environment, U.S. Census") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    geom_text(check_overlap = TRUE, size = 2, aes(label = zip), hjust = 0.5, vjust = -0.5)
+```
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#Attempt at heat map
+
+#Tidying up the data for the plotting
+map_data <- md_noncompliant_zip |> 
+  gather(key = "race", value = "count", -zip, -number_of_noncompliant)
+```
+
+```{r}
+
+heatmap_plot <- ggplot(map_data, aes(x = zip, y = race, fill = count)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "blue") +
+  labs(title = "Reports by Race Demographics in Each Zip Code",
+       x = "Zip Code",
+       y = "Race",
+       fill = "Number of Reports")
+
+heatmap_plot
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Now let's make a dataframe of just the corrective_actions_required reports in MD. How are they spread out across the state?
+
+compliance_corrective_required <- md_reports |>
+  filter(site_condition == "Corrective Actions Required")
+
+required_zip <- compliance_corrective_required |> 
+  group_by(zip) |> 
+  summarise(number_of_corrective_actions_required = n()) |> 
+  arrange(desc(number_of_corrective_actions_required)) |> 
+  mutate(total = sum(number_of_corrective_actions_required),
+         percent_of_corrections = (number_of_corrective_actions_required/total)*100) |> 
+  select(-total)
+
+required_zip
+```
+
+
+```{r}
+demographics_near_required_actions <- required_zip |> 
+  left_join(census_data, by = "zip") |> 
+  arrange(desc(percent_of_corrections))
+
+demographics_near_required_actions
+```
+
+```{r}
+md_zip_map <- md_reports_zip |> 
+  left_join(census_data, by = "zip") |> 
+  mutate(reports_per_capita = (number_of_reports/total_pop)*10,000) |> 
+  select(zip, reports_per_capita)
+  
+md_zip_map
+
+write_csv(md_zip_map, "data/md_map.csv")
+```
 
 
 
