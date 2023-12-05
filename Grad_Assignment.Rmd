@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 1. Who created and maintains the data? What state program or law is it connected to?
-**Answer** Maryland Department of the Environment (MDE); owner: Sharmila; This data set is connected to MDE's Annual Enforcement and Compliance Report, required by the Environment Article §1-301(d), Annotated Code of Maryland.
+**Answer** Maryland Department of the Environment (MDE); owner: Sharmila; This data set is connected to MDE's Annual Enforcement and Compliance Report, required by the Environment Article §1-301(d), Annotated Code of Maryland. I tried finding a full name attached to the dataset, but the MDE keeps passing me from person to person who they say would know more.
 
 2. What does each row represent?
 
@@ -29,16 +29,19 @@ knitr::opts_chunk$set(echo = TRUE)
 
 **Questions for data owner**
 1. Why is the inspection_reason column blank? Can I have the data?
+* Note: I called, I emailed, I got in contact with the department (the dataset only has a first name attached to it, and I couldn't link it to an employee), and I've kind of just been tossed from place to place looking for someone who can help me find this. Might need to MPIA it, worse comes to worse. I was really hoping to get a good story idea out of though, as the people at the department told me this column is supposed to tell me if the inspection was routine or upon complaint.
+
 2. Why are there reports from other states?
 3. What is the 00000 zip code -- is this just blank? What is the "206 7", "20619619" and "33333-3333"? (Cleaned -- could not match 33333 with a zip code in Baltimore)
 
 #Story Ideas
-1. The MTA-Purple Line. It has the highest number of reports. This could possibly be because it stretches from Bethesda to North Carrollton, so there's a lot of ground to cover in reports. However, the majority of those reports are in noncompliance. What does this entail? Is this simply because of construction going on or do they account for that aspect in the report? How is this impacting flash flooding? 
+1. The MTA-Purple Line has the highest number of reports -- and the highest number of noncompliance results. By percentage, that's 48% its inspections -- I would guess not an acceptable amount even for a large project. A large majority of these are also storm water related, which can impact the likelihood of if an area floods. Now, because the project stretches from Bethesda to North Carrollton and these reports are only attributed to Bethesda in a broad sense, it's possible they aren't clumped in one area. If I had more time, I would likely request the reports related to the Purple Line (the link that should have showed them was broken). I have a chart father down that shows the distribution of inspection types related to the Purple Line.
 
-2. The crossover into other states.
+2. Many of these noncompliance reports (including ones that required corrective actions) are in counties that have seen the majority of flood events from 2019 to 2023. In fact, the top three counties with the highest number of flood events (NWS: Montgomery, Prince George's and Frederick) all had the same top issue: NPDES (National Pollutant Discharge Elimination System) Construction Activity. That basically translates to issues with controlling pollutants from construction from discharging into the water system. Most of the Purple Line construction issues are all logged under Montgomery County despite the scope of the site crossing counties, which means PG's actual count for this could be higher but logged in Montgomery depending on where the inspection took place. Would love to talk to the Department of the Environment as well as the NWS about how flooding plays a role in this since it's likely the site wouldn't be protected from rainwater sweeping up pollutants.
 
-3. 
+3. I started looking into unauthorized sites that were inspected and found to be noncompliant. Within them I found an "Alleged unauthorized clearing of forested wetlands" in Dundalk in Baltimore, MD. There are 13 counts of inspection, all noncompliant. Some of the types were sediment erosion and others were along the lines of storm water management throughout construction. I started looking into all the unauthorized events. I think the story here is likely less on one specific violation and more on why these things occur, using this data to find them. Since the addresses are listed, they're places I could visit and ask around about. One count was of discharge in a stormdrain here in PG near the deconstruction of NAPA, there are also a few unauthorized bridges. Why were they built, what community needs are not being met and why?
 
+Note: I joined this data set with Census data -- both race/ethncity and then median income, because I wanted to know: Are there more noncompliance site condition results in zip codes with a majority Black population? What about in zip codes that have a lower median income than Maryland's median income? However, I found no relationships between the data and those two aspects of the census data. If I were to continue working on this, specifically relating to census data, I would next look to the age demographics and the "prices asked" data for home sales. The age portion I'm curious about to see if a lot of these noncompliance outcomes occur near zip codes with a college or zip codes with a high concentration of older folks. For the house data, I want to know if houses near areas that received noncompliance reports were typically cheaper than areas away from them.
 
 ```{r}
 library(tidyverse)
@@ -47,6 +50,9 @@ library(janitor)
 library(stringr)
 library(ggplot2)
 library(ggthemes)
+library(sf)
+library(tigris)
+options(tigris_use_cache = TRUE)
 ```
 
 
@@ -66,10 +72,40 @@ compliance <- read_csv("data/compliance_dec.csv") |>
          year = year(inspection_date),
          month = month(inspection_date, label = TRUE),
          day = day(inspection_date),
-         zip = case_when(zip == "" | zip == "00000" | zip == "33333" ~ NA, .default = zip)) |> 
+         zip = case_when(zip == "" | zip == "00000" | zip == "33333" ~ NA, .default = zip),
+         site_name = case_when(site_name == "Agricopia-Section 4-Lots 315-316" | 
+                                 site_name == "Agricopia-Section 4 Lots 319 & 320" | 
+                                 site_name == "Agricopia - Section 4 & 5 - Lots 329-330" | 
+                                 site_name == "Agricopia - Section 4 - Lots 313-314" | 
+                                 site_name == "Agricopia - Section 4 & 5 - Lots 383-384" | 
+                                 site_name == "Agricopia - Section 4 - Lots 315-316" |
+                                 site_name == "Agricopia - Section 4 - Lots 317-318" |  
+                                 site_name == "Agricopia - Section 4 - Lots 325-326" |
+                                 site_name == "Agricopia - Section 4 - Lots 327-328" |
+                                 site_name == "Agricopia - Section 4C-2 - Lots 505-510" |
+                                 site_name == "Agricopia - Section 7 - Lot 194" |
+                                 site_name == "Agricopia-Section 4-Lots 317-318" |
+                                 site_name == "Agricopia - Section 7 - Lot 195" |
+                                 site_name == "Agricopia - Section 7, 8, & 9" |
+                                 site_name == "Agricopia -Section 4C-4 - Lots 532-538, Lots525-531" |
+                                 site_name == "Agricopia /Section 6B Open Space O" |
+                                 site_name == "Agricopia – Section 7A" |
+                                 site_name == "Agricopia Lot 222" |
+                                 site_name == "Agricopia Section $ Lots 323 & 324" |
+                                 site_name == "Agricopia Section 4C-1 Townhomes Lots 465-470" |
+                                 site_name == "Agricopia Section 6B - Lots 413-418 & 423-424" |
+                                 site_name == "Agricopia Section 7 Lot 220" |
+                                 site_name == "Agricopia Sections 4 & 5 - Lots 379-380" |
+                                 site_name == "Agricopia- Lot 221" |
+                                 site_name == "Agricopia-Lot 152" |
+                                 site_name == "Agricopia Section 4 Lots 321-322" 
+                               ~ "Agricopia", .default = site_name),
+         site_name = case_when(site_name == "P & J Contracting Company, Inc." ~ "P & J Contracting Company, Inc", .default = site_name)
+         ) |> 
   select(-document, -inspection_reason)
 
 compliance
+
     ```
 
 ```{r}
@@ -103,19 +139,41 @@ compliance_counties <- compliance |>
   arrange(desc(count))
 
 compliance_counties
+
+#Because of this, I'm going to create the md_reports dataframe, which will just include the Maryland reports. The ones outside of the state don't seem too significant, though there are a few on the borders. My theory is that the weird locations, like the one in Atlanta, Georgia, are listed because their headquarters is probably there. It's the reason why I'm hesitant about the Purple Line as just Bethesda.
+
+md_reports <- compliance |> 
+  filter(state == "MD")
+
+md_reports
+
 ```
 
 ```{r}
+#What counties have the most noncompliance reports? I'm including "Corrective Actions Required" since it shows something still needed to be fixed.
 
+county_noncomp_count <- md_reports |> 
+  filter(site_condition == "Noncompliance" | site_condition == "Corrective Actions Required") |>  
+  group_by(county) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+county_noncomp_count
+```
+
+
+```{r}
+#Here I want to get a sense of the different columns and what all their entries are.
+
+#The recommended_actions column
 compliance_actions <- compliance |> 
   group_by(recommended_actions) |> 
   summarise(count =n()) |> 
   arrange(desc(count))
 
 compliance_actions
-```
 
-```{r}
+#The site_condition column
 compliance_site_condition <- compliance |> 
   group_by(site_condition) |> 
   summarise(count =n()) |> 
@@ -124,9 +182,8 @@ compliance_site_condition <- compliance |>
 compliance_site_condition
 ```
 
-
 ```{r}
-#What are the action required reports? A residence Hall at Bowie State University has the most. Would probably need to FOIA the records or just ask since they seemed pretty willing to help out when I called.
+#What site has the most "corrective action required" outcome in its site_condition column? A residence Hall at Bowie State University has the most. Would probably need to FOIA the records or just ask since they seemed pretty willing to help out when I called. If I had the inspection_reason column, I would have loved to have seen how many requests came from college campuses.
 
 action_required <- compliance |> 
   filter(site_condition == "Corrective Actions Required") |> 
@@ -139,7 +196,7 @@ action_required
 ```
 
 ```{r}
-#A recycling company (World Recycling Company, 11 counts of significant noncompliance) received the most "Significant Noncompliance" counts. Now let's see how they pan out combined with Noncompliance. The recycling company is still pretty far down when combined.
+#A recycling company (World Recycling Company, 11 counts of significant noncompliance) received the most "Significant Noncompliance" counts within the site_status column. However, combined with Noncompliance, it's a little further down the list.
 
 sig_non <- compliance |> 
   filter(site_status == "Significant Noncompliance") |> 
@@ -148,8 +205,6 @@ sig_non <- compliance |>
   arrange(desc(count))
 
 sig_non
-
-
 
 sig_norm_noncom <- compliance |> 
   filter(site_status == "Significant Noncompliance"  | site_status == "Noncompliance") |> 
@@ -161,15 +216,12 @@ sig_norm_noncom <- compliance |>
 sig_norm_noncom
 ```
 
-
-
 ```{r}
 #Wowowowowow the Purple Line has over 500 total reports, making it the site with the highest count of reports. This makes sense seeing how it's a large project that spans across different zip codes.
 names <- compliance |> 
-#  filter(site_name == "MTA-Purple Line") |> 
   group_by(site_name) |> 
-  summarise(count =n()) |> 
-  arrange(desc(count))
+  summarise(total_count =n()) |> 
+  arrange(desc(total_count))
 
 names
 ```
@@ -180,8 +232,8 @@ names
 noncompliance_condition <- compliance |> 
   filter(site_condition == "Noncompliance") |> 
   group_by(site_name) |> 
-  summarise(count = n()) |> 
-  arrange(desc(count))
+  summarise(condition_count = n()) |> 
+  arrange(desc(condition_count))
 
 noncompliance_condition
 
@@ -189,10 +241,21 @@ noncompliance_condition
 noncompliance_status <- compliance |> 
   filter(site_status == "Noncompliance") |> 
   group_by(site_name) |> 
-  summarise(count = n()) |> 
-  arrange(desc(count))
+  summarise(status_count = n()) |> 
+  arrange(desc(status_count))
 
 noncompliance_status
+```
+
+```{r}
+#Because the purple line is such an outlier, I want to compare what percentage noncompliance results make up of all the company's inspections. About 48% of the Purple Line's inspection results are noncompliant.
+
+status_merge <- names |> left_join(noncompliance_status, by = "site_name") |> 
+  mutate(perc_noncom = (status_count/total_count)*100) |> 
+  arrange(desc(perc_noncom))
+
+status_merge
+
 ```
 
 ```{r}
@@ -218,8 +281,8 @@ write_csv(purple_line_types, "data/purple_line_types.csv")
 ```
 
 ```{r}
-#I'm more comfortable with using datawrapper, but I wanted to try to make this a bar chart in ggplot. Here's the datawrapper chart:
-
+#I'm more comfortable with using datawrapper, but I wanted to try to make this a bar chart in ggplot.
+#Here's the datawrapper map: https://datawrapper.dwcdn.net/vrh1F/2/
 #And here's the ggplot chart: 
 
 purple_line_types |> 
@@ -242,7 +305,6 @@ labs(
 
 ```
 
-
 ```{r}
 #Construction on the Purple Line actually paused around the pandemic and restarted during the summer of 2022. What was going on during that period of limbo? Why were there still compliance reports/was it not taken care of during that time? How did this impact the surrounding area/environment? This can be especially concerning since storm water management is the top inspection type for this site. Did this impact flash flood risk?
 noncompliance_per_year <- compliance |> 
@@ -255,8 +317,9 @@ noncompliance_per_year <- compliance |>
 ```
 
 ```{r} 
-#Was there a year with more noncompliance issues than others? Yes, 2023. Construction began Aug. 2017, paused Sept. 2020 and restarted summer of 2022
+#Was there a year with more noncompliance issues than others? Yes, 2023. Construction began Aug. 2017, paused Sept. 2020 and restarted summer of 2022. Still, these noncompliances have been growing up over time.
 purple_line_time <- purple_line |> 
+  filter(site_condition == "Noncompliance"| site_condition == "Corrective Actions Required") |> 
   group_by(year) |> 
   summarise(count = n()) |> 
   arrange(year)
@@ -264,9 +327,41 @@ purple_line_time <- purple_line |>
 purple_line_time
 ```
 
-#Okay, time to start exploring another data set. I want to see if I can merge this with the census. I want to see the population in each county. Maybe I can break it up by race/ethnicity for a good comparison. 
+```{r}
+# Here I'm exploring the types of site conditions found along the purple line.
+purple_compliant_condition <- purple_line |> 
+  group_by(site_condition) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+purple_compliant_condition
+```
 
 ```{r}
+#Again, more exploring. I try not to use the site_status column, but I wanted to see what it totaled to for these. I tried to group the statuses together that made the mose sense. For everthing else, I labeled them as other.
+
+purple_compliant_status <- purple_line |> 
+  group_by(site_status) |> 
+  mutate(
+    site_status = case_when(site_status == "Out of Compliance- NOV" | site_status == "Out of Comp HPV NOV Issued"| site_status == "Corrective Actions Required" ~ "Noncompliance", .default = site_status) ,
+    
+    site_status = case_when(site_status == "Satisfactory/Compliance" | site_status == "No Violations Observed" ~ "Compliance", .default = site_status),
+    
+    site_status = case_when(site_status == "Additional Investigation Requi" | site_status == "Not Applicable"| site_status == "Not Evaluated" | site_status == "Compliance Assistance Rendered" ~ "Other", .default = site_status)
+    
+  ) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+purple_compliant_status
+```
+
+#Okay, time to start exploring another data set. Are there more noncompliance results in zip codes with a higher Black population? Data shows this isn't quite true. 
+
+```{r}
+
+#Here I'm pulling all the data on race and ethnicity from the census. I'll join it with MD data later to weed out the non-MD reports.
+
 mdzip <- get_acs(geography="zcta", variables = "B01003_001", year=2021) |> 
   clean_names() |> 
   rename(zip = geoid, total_pop = estimate) |>
@@ -316,10 +411,10 @@ md_hispanic <- get_acs(geography="zcta", variables = "B03001_003", year=2021)|>
 
 ```
 
-# Joining
+# Joining the demographic data with the noncompliance data
 
 ```{r}
-#Let's start with the census data. The number of people by race/ethnicity were a little meaningless just by looking at them, so I made columns that showed their percentage of the population instead. Since "Hispanic" is not a race, it shouldn't be counted as its own. There will be overlap.
+#The number of people by race/ethnicity were a little meaningless just by looking at them, so I made columns that showed their percentage of the population instead. Since "Hispanic" is not a race, there will be overlap.
 
 census_data <- mdzip |> 
   left_join(md_white, by = "zip") |> 
@@ -346,23 +441,85 @@ census_data <- mdzip |>
 #I want to focus on noncompliance records for this. Possibly more focused on issues that were fixed/ones that haven't been resolved.
 
 ```{r}
-#Let's look at just Maryland stuff right now. I'm clumping "Significant Noncompliance" together with "Noncompliance" since they're in the same vein.
+#Let's look at just Maryland stuff right now. I'm clumping "Significant Noncompliance" together with "Noncompliance" since they're along the same vein.
 
-md_reports_noncompliant <- compliance |> 
-  filter(state == "MD", site_condition == "Significant Noncompliance"  | site_condition == "Noncompliance") |>  
-  group_by(zip) |> 
-  summarise(number_of_noncompliant = n()) |> 
-  arrange(desc(number_of_noncompliant))
+count_noncompliance <- md_reports |> 
+  mutate(
+    site_status = case_when(site_status == "Out of Compliance- NOV" | site_status == "Out of Comp HPV NOV Issued"| site_status == "Corrective Actions Required" ~ "Noncompliance", .default = site_status)
+                            ) |> 
+  filter(site_status == "Noncompliance") |> 
+      group_by(zip, site_status) |> 
+      summarise(noncompliance_count = n()) |> 
+  select(-site_status) |> 
+      arrange(zip)
+    
+count_noncompliance
 
-md_reports_noncompliant
+
+count_compliance <- md_reports |> 
+mutate(
+    site_status = case_when(site_status == "Satisfactory/Compliance" | site_status == "No Violations Observed" ~ "Compliance", .default = site_status)
+                            ) |> 
+  filter(site_status == "Compliance") |> 
+      group_by(zip, site_status) |> 
+      summarise(compliance_count = n()) |> 
+  select(-site_status) |> 
+      arrange(zip)
+
+count_compliance
+
+
+other_reports <- md_reports |> 
+mutate(
+  site_status = case_when(site_status == "Additional Investigation Requi" | site_status == "Not Applicable"| site_status == "Not Evaluated" | site_status == "Compliance Assistance Rendered" ~ "Other", .default = site_status)
+                            ) |> 
+  filter(site_status == "Other") |> 
+      group_by(zip, site_status) |> 
+      summarise(other_count = n()) |> 
+  select(-site_status) |> 
+      arrange(zip)
+
+other_reports
+
+
+md_reports_status <- count_noncompliance |> 
+  left_join(count_compliance, by = "zip") |> 
+  left_join(other_reports, by = "zip") |> 
+    mutate(
+    noncompliance_count = ifelse(is.na(noncompliance_count), 0, noncompliance_count),
+    compliance_count = ifelse(is.na(compliance_count), 0, compliance_count),
+    other_count = ifelse(is.na(other_count), 0, other_count),
+    total = noncompliance_count + compliance_count + other_count,
+    perc_non_comp = (noncompliance_count/total)*100
+    ) 
+
+md_reports_status
 ```
 
+#Okay, well, this gives me a few taking zip codes to look closer into farther down. Now I'm going to take the above and merge it with the census data
 ```{r}
-md_noncompliant_zip <- md_reports_noncompliant |> 
-  left_join(census_data, by = "zip")
+md_noncompliant_zip <- md_reports_status |> 
+  left_join(census_data, by = "zip") |> 
+#  filter(perc_black >= 50.00) |> 
+  select(zip, perc_non_comp, noncompliance_count, compliance_count, perc_black, perc_white) |> 
+  arrange(desc(perc_non_comp))
 
 md_noncompliant_zip
 ```
+#Is there a trend where the majority of percentage of noncompliance outcomes are in majority Black zip codes?
+```{r}
+ggplot(md_noncompliant_zip, aes(x=perc_black, y=perc_non_comp)) +
+  geom_point()+
+  labs(
+    title="Sites that received WSA noncompliant results",
+    x = "percent of zip population that identifies as Black/African American",
+    y = "percent of noncompliant results",
+    caption = "source: Maryland Department of the Environment, U.S. Census") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    geom_text(check_overlap = TRUE, size = 2, aes(label = zip), hjust = 0.5, vjust = -0.5)
+```
+
+#WElp, doesn't look like my theory was correct. What about income?
 
 ```{r}
 # Attempt at income
@@ -374,92 +531,298 @@ mdzip_income <- get_acs(geography="zcta", variables = "B19013_001", year=2021) |
 
 mdzip_income
 ```
+
 ```{r}
-md_income_noncompliance <- md_reports_noncompliant |> 
-  left_join(mdzip_income, by = "zip")
+#Now grabbing noncompliance again.
+md_reports_noncompliance <- md_reports |> 
+  filter(site_condition == "Noncompliance") |> 
+  group_by(zip) |> 
+  summarise(count_of_noncompliant = n()) |> 
+  arrange(desc(count_of_noncompliant))
+
+md_reports_noncompliance
+```
+
+
+```{r}
+md_income_noncompliance <- md_reports_status |> 
+  left_join(mdzip_income, by = "zip") |> 
+  arrange(desc(perc_non_comp))
 
 md_income_noncompliance
 
 ```
 
 ```{r}
-ggplot(md_income_noncompliance, aes(x=median_income, y=number_of_noncompliant)) +
+ggplot(md_income_noncompliance, aes(x=median_income, y=perc_non_comp)) +
   geom_point()+
   labs(
-    title="Majority WSA noncompliant sites were in zip codes below state's median income",
-    subtitle= "Zip codes that earned below the state's median income of $108k had more noncompliant sites.",
+    title="Sites that received WSA noncompliant results compared to median income",
     x = "median household income",
-    y = "number of noncompliant results",
+    y = "percent of noncompliant results",
     caption = "source: Maryland Department of the Environment, U.S. Census") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     geom_text(check_overlap = TRUE, size = 2, aes(label = zip), hjust = 0.5, vjust = -0.5)
 ```
 
+#Okay, so really no relationship here overall. Let's take a look at some specific zip codes just to see their demographics.
+Population density:
+21601: 216
+21801: 708
+21740: 884.72
+21613: 110.36
+21921: 488.08
+21666: 557
+20646: 229 -- La Plata
+20817: 2,687.56 -- Bethesda
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Bethesda is the one outlier among wealthier zip codes -- MTA Purple Line
 
 ```{r}
-#Attempt at heat map
+#Is it possible to compare per capita, or are the numbers too small?
+md_zip_map <- md_reports_zip |> 
+  left_join(census_data, by = "zip") |> 
+  mutate(reports_per_capita = (number_of_reports/total_pop)*10,000) |> 
+  select(zip, reports_per_capita)
+  
+md_zip_map
 
-#Tidying up the data for the plotting
-map_data <- md_noncompliant_zip |> 
-  gather(key = "race", value = "count", -zip, -number_of_noncompliant)
-```
-
-```{r}
-
-heatmap_plot <- ggplot(map_data, aes(x = zip, y = race, fill = count)) +
-  geom_tile() +
-  scale_fill_gradient(low = "white", high = "blue") +
-  labs(title = "Reports by Race Demographics in Each Zip Code",
-       x = "Zip Code",
-       y = "Race",
-       fill = "Number of Reports")
-
-heatmap_plot
+#I think they might be too small to compare per capita by zip
+#write_csv(md_zip_map, "data/md_map.csv")
 ```
 
 
+```{r}
+#These were outliers when I did a general total rather than a percent.
+md_outliers_zip <- md_reports |> 
+  filter(zip == "21601" | zip == "21801"| zip == "21740" | zip == "21613"| zip == "21921"| zip == "21666"| zip == "20646"| zip == "20817" & site_condition == "Noncompliance" | site_condition == "Significant Noncompliance")|> 
+  group_by(zip, inspection_type) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+md_outliers_zip
+
+#write_csv(md_outliers_zip, "data/zip_outliers.csv")
+
+```
+
+Lots of sediment erosion in 20646 (486 reports), 21601 (418 reports), 20801 (405 reports). I'm just going to poke around in these zip codes to see what's there.
+
+```{r}
+#This one is in Baltimore County, which made me interested
+zip_21213	 <- md_reports |> 
+  filter(zip == "21213") |> 
+  group_by(site_name, inspection_type) |> 
+  summarise(count =n()) |> 
+  arrange(desc(count))
+
+zip_21213	
+#P & J Contracting Company is standing out the most to me here.
+```
+
+```{r}
+#Here's a zip code with a majority Black population
+zip_20613 <- md_reports |> 
+  group_by(site_condition) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+zip_20613
+```
+
+
+```{r}
+#Agricopia is a neighborhood in La Plata, which is in this zip. Agricopia had a good amount of noncompliance reports overall (still behind the Purple Line)
+zip_20646 <- md_reports |> 
+  filter(zip == "20646" & site_condition == "Noncompliance" | site_condition == "Significant Noncompliance", inspection_type == "Sediment_Erosion") |> 
+  group_by(site_name) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+  
+
+zip_20646
+```
+
+
+```{r}
+#Checking out this Talbot County zip code. Easton Technology Center had stood out to me at the moment.
+zip_21601 <- md_reports |> 
+  filter(zip == "21601" & site_condition == "Noncompliance" | site_condition == "Significant Noncompliance", site_name == "Easton Technology Center Lot 11") |> 
+  group_by(inspection_type) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+  
+
+zip_21601
+```
+
+#I FOUND FLOOD EVENT DATA
+```{r}
+#What areas have had the majority of flood events? I found some NWS data that is 2019- Aug. 31, 2023. I want to be able to compare this to counties with the noncompliance results. If a location's stormwater management is poor, it could contribute to flash flooding. If it's noncompliant with NPDES regulations, that could potentially mean more pollutants in water sources. This would show me what counties to focus on if I wanted to look deeper into flooding. I would love to find a water quality map that shows local water quality over time. However, I couldn't find one in time that would work.
+
+flood_events <- read_csv("data/storm_data_search_results.csv") |> 
+  clean_names() |> 
+  rename(county = cz_name_str) |>
+  select(county, begin_location, begin_date) |> 
+  mutate(begin_date = mdy(begin_date), 
+        county = str_to_title(str_remove_all(county, " CO.")),
+        county = case_when (county == "Baltimore City (C)" ~ "Baltimore City", .default = county),
+        begin_location= str_to_title(begin_location))
+
+ 
+flood_events
+
+md_flood_event_count <- flood_events |> 
+  group_by(county) |> 
+  summarise(flood_event_count = n()) |> 
+  arrange(desc(flood_event_count))
+
+md_flood_event_count
+```
+
+```{r}
+counties <- counties()
+```
+
+```{r}
+md_counties <- counties |> 
+  filter(STATEFP == "24") |> 
+  clean_names() |> 
+  rename(county = name) |> 
+  mutate(
+         geoid = as.character(geoid),
+         county = str_replace(county, "Baltimore County", "Baltimore"),
+         county = case_when(
+         county == "Baltimore" & namelsad == "Baltimore city" ~ "Baltimore City", TRUE ~ county),
+         county = str_replace(county, "Baltimore County", "Baltimore"))
+md_counties
+```
+
+```{r}
+flood_counties <- md_counties |> left_join(md_flood_event_count, join_by(county)) |> 
+ # select(-county.x) |> 
+ # rename(county = county.y) |> 
+  mutate(county = str_replace(county, "Baltimore County", "Baltimore")) |> 
+  select(-namelsad)
+
+flood_counties
+```
+
+
+```{r}
+county_centroids <- st_centroid(flood_counties)
+county_centroids_df <- as.data.frame(st_coordinates(county_centroids))
+county_centroids_df$county <- flood_counties$county
+
+st_centroid(flood_counties) |>
+  st_coordinates() |>
+  as.data.frame() |>
+  cbind(flood_counties)
+```
+
+```{r}
+county_centroids_df$county
+```
+```{r}
+#The grey counties appear to have had no flood events from 2019-2023.
+ggplot() +
+  geom_sf(data=flood_counties, aes(fill=flood_event_count)) +
+  geom_text(aes(x = X, y = Y, label = county), data = county_centroids_df, size = 3, check_overlap = TRUE) +
+  theme_minimal()
+```
+
+```{r}
+#What are the top noncompliance investigation types for the top 5 flood counties? (Frederick, Montgomery, Baltimore, Prince George's, St. Mary's)
+Baltimore_top_inspection_type <- md_reports |> 
+  filter(site_condition == "Noncompliance"| site_condition == "Corrective Actions Required", county == "Baltimore", inspection_type == "NPDES Industrial Stormwater") |> 
+  group_by(inspection_type) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count)) |> 
+  mutate(county = "Baltimore")
+  
+  Baltimore_top_inspection_type
+  
+  Frederick_top_inspection_type <- md_reports |> 
+  filter(site_condition == "Noncompliance"| site_condition == "Corrective Actions Required", county == "Frederick", inspection_type == "NPDES Construction Activity") |> 
+  group_by(inspection_type) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count)) |> 
+  mutate(county = "Frederick")
+  
+  Frederick_top_inspection_type
+  
+Montgomery_top_inspection_type <- md_reports |> 
+  filter(site_condition == "Noncompliance"| site_condition == "Corrective Actions Required", county == "Montgomery", inspection_type == "NPDES Construction Activity") |> 
+  group_by(inspection_type) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count)) |> 
+  mutate(county = "Montgomery")
+  
+ Montgomery_top_inspection_type
+  
+ 
+PrinceGeorges_top_inspection_type <- md_reports |> 
+  filter(site_condition == "Noncompliance"| site_condition == "Corrective Actions Required", county == "Prince George's", inspection_type == "NPDES Construction Activity") |> 
+  group_by(inspection_type) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count)) |> 
+  mutate(county = "Prince George's")
+  
+PrinceGeorges_top_inspection_type
 
 
 
+StMarys_top_inspection_type <- md_reports |> 
+filter(site_condition == "Noncompliance"| site_condition == "Corrective Actions Required", county == "St. Mary's", inspection_type == "Tidal Wetlands") |> 
+group_by(inspection_type) |> 
+summarise(count = n()) |> 
+arrange(desc(count)) |> 
+mutate(county = "St. Mary's")
+  
+StMarys_top_inspection_type
 
 
+top_types_in_flood <- bind_rows(Baltimore_top_inspection_type,
+                                Frederick_top_inspection_type, 
+                                Montgomery_top_inspection_type,
+                                PrinceGeorges_top_inspection_type, 
+                                StMarys_top_inspection_type) |> 
+  arrange(desc(count)) |> 
+  select(county, everything())
+#^This last line I snagged from Chat GPT. I asked it "How do I bring the last column up to be the first column?" It responded by using the select() function and then "everything() " to avoid listing every single column after.
+  
 
+top_types_in_flood 
+```
 
+#^Now we have the top issues in the top five counties that have seen the majority of flood events since 2019.
+```{r}
+inspection_types <- md_reports |> 
+  group_by(inspection_type) |> 
+  summarise(inspection_type_count = n()) |> 
+  arrange(desc(inspection_type_count))
 
+inspection_types
+```
 
+```{r}
+#Baltimore City was pretty dark on the map, meaning it didn't have a lot of flood events during that timespan, but I still want to see what is causing the majority of these noncompliance findings. P$J Contracting Company, Inc. stands out. 
 
+bc_storm_water <- md_reports |> 
+  filter(county == "Baltimore City",
+         inspection_type == "NPDES Industrial Stormwater",
+         site_status == "Noncompliance",
+         year != "2018"
+         ) |> 
+  group_by(site_name) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
 
+bc_storm_water
+```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#Now let's make a dataframe of just the corrective_actions_required reports in MD. How are they spread out across the state?
+```{r}
+#Now let's make a dataframe of just the corrective_actions_required reports in MD. How are they spread out across the state? College Park, MD, has the most.
 
 compliance_corrective_required <- md_reports |>
   filter(site_condition == "Corrective Actions Required")
@@ -475,26 +838,115 @@ required_zip <- compliance_corrective_required |>
 required_zip
 ```
 
+```{r}
+#What are all of the inspections from unauthorized sources? Where are they located? I decided to make a Google map of this since I had the addresses/could narrow it down a little more to see exactly where the events happened. There seems to be a corridor from southeast of Baltimore that runs northwest of the city. This isn't visual in the zip code map https://www.google.com/maps/d/edit?hl=en&mid=15blNyKGxHlsnJw9fq7eU0PvGLTEqltI&ll=38.970523016438676%2C-77.36076905598128&z=8
+
+#Here's the zip map: https://datawrapper.dwcdn.net/70Unb/1/
+
+unauthorized <- md_reports |> 
+  mutate(is_unauthorized = str_detect(site_name, "(?i)unauthorized")) |> 
+  filter(is_unauthorized == "TRUE")
+
+
+
+zip_unauthorized <- unauthorized |> 
+  filter(site_condition == "Noncompliance" | site_condition == "Corrective Actions Required") |> 
+  group_by(zip) |> 
+  summarise(unauthorized_count = n()) |> 
+  arrange(desc(unauthorized_count))
+
+
+zip_unauthorized
+
+#write_csv(zip_unauthorized, "data/zipcode_unauthorized.csv")
+```
 
 ```{r}
+#What does this look like at a county level? Not my favorite, especially since there are a few near the border counties. I want to know if they were done by the Maryland border or if it was deeper in the state. https://datawrapper.dwcdn.net/pU9Q3/2/
+county_unauthorized <- unauthorized |> 
+  filter(site_condition == "Noncompliance" | site_condition == "Corrective Actions Required") |> 
+  group_by(county) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+county_unauthorized
+
+#write_csv(county_unauthorized, "data/county_unauthorized.csv")
+
+```
+
+```{r}
+#What's the spread of incident types with unauthorized incidents?
+
+unauthorized_incident_types <- unauthorized |>
+  group_by(inspection_type) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+  unauthorized_incident_types
+```
+
+```{r}
+#What are the demographics of those zip codes? Still mostly in white zip codes
+  
+unauthorized_demo <- zip_unauthorized |> 
+  left_join(census_data, by = "zip") |> 
+  select(zip, unauthorized_count, total_pop, perc_black, perc_white)
+
+unauthorized_demo
+```
+
+
+```{r}
+#Speaking of flooding, How big is state/federal stormwater management issue in each zip code? Each county? A handful of counties in Montgomery, Baltimore, St. Mary's and PG County had some of the highest SWM noncompliance counts. 
+
+state_fed_swm_zip <- md_reports |> 
+  left_join(count_noncompliance, by = "zip") |> 
+  filter(inspection_type == "State_federal SWM", site_condition == "Noncompliance") |> 
+  group_by(zip, county, noncompliance_count) |> 
+  summarise(swm_count = n()) |> 
+  mutate(swm_percent_of_noncompliance = (swm_count/noncompliance_count)*100) |> 
+  arrange(desc(swm_percent_of_noncompliance))
+
+state_fed_swm_zip
+```
+
+```{r} 
+#Anne Arundel hs the largest percentage at 15%, followed by Montgomery, Harford, PG County and Baltimore. Both Montgomery and PG County were among the top three counties with the highest flood events from 2019-2023.
+state_fed_swm_county <- md_reports |> 
+  left_join(county_noncomp_count, by = "county") |> 
+  filter(inspection_type == "State_federal SWM", site_condition == "Noncompliance") |> 
+  group_by(county, count) |> 
+  summarise(swm_count = n()) |> 
+  mutate(swm_percent_of_noncompliance = (swm_count/count)*100) |> 
+  arrange(desc(swm_percent_of_noncompliance))
+
+state_fed_swm_county
+
+```
+
+
+```{r}
+#What is Baltimore City's biggest noncompliance issue overall?
+
+Baltimore_City_noncompliance <- md_reports |> 
+  filter(county == "Baltimore City", site_condition == "Noncompliance") |>
+  group_by(inspection_type) |> 
+  summarise(Baltimore_City = n()) |> 
+  arrange(desc(Baltimore_City))
+
+Baltimore_City_noncompliance
+
+```
+
+
+```{r}
+#What are the demographics of zip codes that require action? Still pretty white.
 demographics_near_required_actions <- required_zip |> 
   left_join(census_data, by = "zip") |> 
   arrange(desc(percent_of_corrections))
 
 demographics_near_required_actions
 ```
-
-```{r}
-md_zip_map <- md_reports_zip |> 
-  left_join(census_data, by = "zip") |> 
-  mutate(reports_per_capita = (number_of_reports/total_pop)*10,000) |> 
-  select(zip, reports_per_capita)
-  
-md_zip_map
-
-write_csv(md_zip_map, "data/md_map.csv")
-```
-
-
 
 
